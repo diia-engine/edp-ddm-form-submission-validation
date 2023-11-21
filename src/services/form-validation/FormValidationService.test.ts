@@ -6,6 +6,7 @@ import type { Request } from 'express';
 import { I18nService } from '#app/modules/i18n/I18n.service';
 import { ConfigService } from '@nestjs/config';
 import { EnvConfig } from '#app/types/env';
+import { MockValidationPool } from '#app/services/form-validation/worker/MockValidationPool';
 
 async function _formatValidatePromiseResult(p: Promise<unknown>): Promise<unknown> {
   return p
@@ -36,7 +37,8 @@ describe('FormValidationService', () => {
     const $configService = new ConfigService<EnvConfig>({ LANGUAGE: 'uk' });
     const $i18nService = new I18nService($configService);
     await $i18nService.init();
-    $formValidation = new FormValidationService($i18nService.i18n);
+    const $pool = new MockValidationPool();
+    $formValidation = new FormValidationService($i18nService.i18n, $pool);
     $formProvider = new MockedFormProviderService($logger);
   });
 

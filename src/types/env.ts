@@ -11,4 +11,7 @@ export type EnvConfig = Partial<{
   USE_MOCKED_FORM_PROVIDER: `${boolean}`;
   REQUEST_BODY_LIMIT: string;
   LANGUAGE: string;
+  WORKER_MIN_POOL_SIZE?: `${number}`;
+  WORKER_MAX_POOL_SIZE?: `${number}`;
+  WORKER_TIMEOUT_MS?: `${number}`;
 }>;

@@ -1,0 +1,2 @@
+export const DEFAULT_POOL_SIZE = 10;
+export const DEFAULT_WORKER_TIMEOUT = 61_000;

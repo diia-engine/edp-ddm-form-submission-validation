@@ -13,7 +13,7 @@
   "scripts": {
     "build": "rimraf dist && nest build",
     "build:clean": "rimraf dist && nest build",
-    "build:prod": "echo mock",
+    "build:prod": "rimraf dist && nest build",
     "lint": "eslint src/**/*",
     "start": "node dist/main.js",
     "start:watch": "nest start --watch",
@@ -61,6 +61,8 @@
     "html-entities": "2.3.3",
     "i18next": "23.7.6",
     "lodash": "4.17.21",
+    "node-abort-controller": "3.1.1",
+    "piscina": "4.9.2",
     "reflect-metadata": "0.1.13",
     "rxjs": "7.5.6",
     "winston": "3.8.2"

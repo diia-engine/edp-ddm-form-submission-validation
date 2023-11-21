@@ -1,8 +1,6 @@
 import './setup-env';
 import { Inject, Injectable } from '@nestjs/common';
 import { FormComponent, FormSchema, FormSubmission } from '#app/types/forms';
-import { Formio } from 'formiojs';
-import * as entities from 'html-entities';
 import * as _ from 'lodash';
 import * as bytes from 'bytes';
 import {
@@ -11,7 +9,6 @@ import {
   FormValidationError,
   MissingFormComponentError,
   UnsupportedFileTypeError,
-  ValidationErrorDetailsItem,
   FileData,
 } from '#app/services/form-validation/types';
 import { validateFilePattern } from '#app/services/form-validation/utils/mime';
@@ -19,24 +16,27 @@ import type { DeepReadonly } from '#app/types/utils';
 import { convertSubmission, findComponents } from '#app/modules/form-submissions/utils';
 import { I18N_PROVIDER_KEY } from '#app/modules/i18n/keys';
 import type { i18n as I18n } from 'i18next';
+import type { ValidationPool } from '#app/services/form-validation/types/pools';
+import { VALIDATION_POOL_PROVIDER_KEY } from '#app/modules/form-submissions/keys';
 
 const DEFAULT_MAX_FILE_SIZE = '100MB';
 @Injectable()
 export class FormValidationService {
-  constructor(@Inject(I18N_PROVIDER_KEY) private readonly i18n: I18n) {
+  private lang: string;
+
+  constructor(
+    @Inject(I18N_PROVIDER_KEY) private readonly i18n: I18n,
+    @Inject(VALIDATION_POOL_PROVIDER_KEY) private readonly validationPool: ValidationPool,
+  ) {
     this.lang = this.i18n.language;
   }
-  private lang: string;
+
   public async validate(
     formSchemaInput: DeepReadonly<FormSchema>,
     submissionInput: DeepReadonly<FormSubmission>,
   ): Promise<FormSubmission['data']> {
-    // TODO: include subforms logic
-    // Copying values in order to avoid external data mutations
     const formSchema = _.cloneDeep<FormSchema>(formSchemaInput);
     let submission = _.cloneDeep<FormSubmission>(submissionInput);
-    // TODO: evalContext
-    // TODO: this.model and this.token
 
     const normalizedFormSchema = {
       ...formSchema,
@@ -45,91 +45,20 @@ export class FormValidationService {
 
     submission = this.normalizeSubmission(normalizedFormSchema.components, submission);
 
-    const unsets: Array<{
-      key: string;
-      data: unknown;
-    }> = [];
-    let unsetsEnabled = false;
+    const i18nBundle = this.i18n.getResourceBundle(this.lang, 'validations');
 
-    const isEmptyData = _.isEmpty(submission.data);
-
-    const form = await Formio.createForm(normalizedFormSchema, {
-      server: true,
-      language: this.lang,
-      i18n: {
-        [this.lang]: this.i18n.getResourceBundle(this.lang, 'validations'),
-      },
-      hooks: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setDataValue(this: any, value: never, key: string, data: never) {
-          if (!unsetsEnabled) {
-            return value;
-          }
-          // Check if this component is not persistent.
-          if (
-            Object.prototype.hasOwnProperty.call(this.component, 'persistent') &&
-            (!this.component.persistent || this.component.persistent === 'client-only')
-          ) {
-            unsets.push({ key, data });
-            // Check if this component is conditionally hidden and does not set clearOnHide to false.
-          } else if (
-            (!Object.prototype.hasOwnProperty.call(this.component, 'clearOnHide') || this.component.clearOnHide) &&
-            (!this.conditionallyVisible() || !this.parentVisible)
-          ) {
-            // unsets.push({ key, data });
-          } else if (this.component.type === 'password' && value === this.defaultValue) {
-            unsets.push({ key, data });
-          }
-          return value;
-        },
-      },
-    });
-
-    // Set the validation config.
-    form.validator.config = {
-      // db: this.model, // TODO: might be needed in future
-      // token: this.token, // TODO: might be needed in future
-      form: normalizedFormSchema,
+    const payload = {
+      schema: normalizedFormSchema,
       submission,
-    };
-
-    // Set the submission data
-    form.data = submission.data;
-
-    // Perform calculations and conditions.
-    form.calculateValue();
-    form.checkConditions();
-
-    // Reset the data
-    form.data = {};
-
-    // Set the value to the submission.
-    unsetsEnabled = true;
-    form.setValue(submission, {
-      sanitize: true,
-    });
-
-    // Check the validity of the form.
-    const isValid: boolean = await form.checkAsyncValidity(null, true);
-    if (isValid) {
-      // Clear the non-persistent fields.
-      unsets.forEach((unset) => _.unset(unset.data, unset.key));
-      submission.data = isEmptyData ? {} : form.data;
-      // fix for memory leak
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (Formio as any).forms[form.id];
-      return submission.data; // TODO: Check if we need another return data structure
+      lang: this.lang,
+      i18nBundle,
+    } as const;
+    const result = await this.validationPool.validate(payload);
+    if (result.ok) {
+      return result.data;
     }
 
-    const details: Array<ValidationErrorDetailsItem> = [];
-    form.errors.forEach((error: { messages: ValidationErrorDetailsItem[] }) =>
-      error.messages.forEach((message) => details.push({ ...message, message: entities.decode(message.message) })),
-    );
-    // fix for memory leak
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    delete (Formio as any).forms[form.id];
-    // Return the validation errors.
-    throw new FormValidationError(details);
+    throw new FormValidationError(result.details);
   }
 
   protected normalizeComponentType(type: string): string {

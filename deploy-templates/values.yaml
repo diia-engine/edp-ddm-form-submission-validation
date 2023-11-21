@@ -101,3 +101,8 @@ affinity: {}
 environmentJs:
   formSchemaProviderUrl: 'http://form-schema-provider:8080'
   dataFactoryUrl: 'http://registry-rest-api:8080'
+
+workerPool:
+  minPoolSize: 10
+  maxPoolSize: 10
+  jobTimeoutMs: 59000
